@@ -1,0 +1,12 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "DefaultEndpointsProtocol=https;AccountName=ocean01;AccountKey=op6AdofsF/VD3s2IbbOWCEWY/9N9L0j6WJm/d+E1yRj0RHb1j4NGSoeuf4z9Xc+1WdC60lareBAy+AStwvNXIg==;EndpointSuffix=core.windows.net",
+    "FUNCTIONS_WORKER_RUNTIME": "python",
+    "ocean01_STORAGE": "DefaultEndpointsProtocol=https;AccountName=ocean01;AccountKey=op6AdofsF/VD3s2IbbOWCEWY/9N9L0j6WJm/d+E1yRj0RHb1j4NGSoeuf4z9Xc+1WdC60lareBAy+AStwvNXIg==;EndpointSuffix=core.windows.net",
+    "ocean01_SCHEDULE": "operations_run_dev",
+    "ocean01_ENV": "DEV",
+    "SLACK_BOT_TOKEN": "xoxb-5344486517812-5373798036195-Cfgjt6n53zOOuckhGkuidpj8",
+    "AzureWebJobs.fLoadMBR2Snowflake_Dev.Disabled": "true"
+  }
+}

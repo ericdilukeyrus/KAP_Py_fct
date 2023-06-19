@@ -1,0 +1,10 @@
+{
+    "account": "vz31470.west-europe.azure",
+    "user": "DBT_DEV",
+    "role": "TRANSFORM_DEV",
+    "password": "dbtPassword123",
+    "warehouse": "COMPUTE_DEV_WH",
+    "database": "OCEAN_DEV",
+    "schema": "OCEAN_ODS",
+    "client_session_keep_alive" : "true"
+}
