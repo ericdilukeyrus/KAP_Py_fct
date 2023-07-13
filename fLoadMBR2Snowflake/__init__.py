@@ -18,11 +18,13 @@ from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 import azure.functions as func
 
+#Global variable
 container_name_az = str("mbr-landing")
 
 slack_client = WebClient(token=os.getenv('SLACK_BOT_TOKEN'))
 
-#Global variable
+urlTeams = "https://keyrusgroup.webhook.office.com/webhookb2/68b15510-2653-4855-be23-14cd5190e969@168e48b2-81f0-4aac-bc77-d58d07d205e2/IncomingWebhook/1217263db75b4b1ea586455578c14fef/7d069be0-a9ad-4d5d-9109-8a307e57a11d"
+headerTeams = {'Content-Type':'application/json'}
 
 def main(myblob: func.InputStream):
     
@@ -35,26 +37,48 @@ def main(myblob: func.InputStream):
    blob_client_instance = blob_service_client.get_blob_client(container_name_az, blob_name, snapshot=None)
    blob_data = blob_client_instance.download_blob()
    
+   #Slack
    slack_client.chat_postMessage(channel="#kap", text="2/4 - File " + blob_name + " received  at " + datetime.now().astimezone(pytz.timezone('Europe/Paris')).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3] + " (Python Script)")
+   #Teams
+   msgTeams_2_4 =  {"text":"1/3 - File <b>" + blob_name + "</b> received  at " + datetime.now().astimezone(pytz.timezone('Europe/Paris')).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]}
+   response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams_2_4))
+
    try: 
         snowpark_df, mbr_scope, mbr_env = loadInferAndPersist(blob_data,blob_name)
         num_rows = snowpark_df.count()
         mbr_env_nm = 'DEV' if mbr_env=='D' else 'PROD'        
    
         if num_rows > 2:
+                #Slack
                 slack_client.chat_postMessage(channel="#kap", text="3/4 - File " + blob_name + " raw data loaded in " + mbr_env_nm + " Snowflake (MBR Scope : " + mbr_scope +")" )
+                #Teams
+                msgTeams_3_4 =  {"text":"2/3 - File <b>" + blob_name + "</b> raw data loaded in " + mbr_env_nm + " db (MBR Scope : <b>" + mbr_scope +"</b>)"}
+                response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams_3_4))
 
                 schedule_status, schedule_name = run_paradygme_schedule(mbr_scope,mbr_env)
 
                 # Now you can do something with the status
                 if schedule_status == "SUCCESS":
-                    slack_client.chat_postMessage(channel="#kap", text="4/4 - File " + blob_name + " loaded in DWH. Scheduled Success : " +  schedule_name)
+                    #Slack
+                    slack_client.chat_postMessage(channel="#kap", text="4/4 - File " + blob_name + " loaded in DWH. Schedul Success : " +  schedule_name)
+                    #Teams
+                    msgTeams_4_4 =  {"text":"3/3 - File <b>" + blob_name + "</b> loaded in DWH. Schedule Success : <b>" +  schedule_name + "</b>"} 
+                    response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams_4_4))
+
                     blob_client_instance.delete_blob()            
                 else:
-                    slack_client.chat_postMessage(channel="#kap", text="4/4 - File " + blob_name + " not loaded in DWH. Scheduled Error : " + schedule_name)
-                    print("Snowflake DWH refresh failed!")
+                    #Slack
+                    slack_client.chat_postMessage(channel="#kap", text="4/4 - File " + blob_name + " not loaded in DWH. Schedul Error : " + schedule_name)
+                    #Teams
+                    msgTeams_4_4 =  {"text":"3/3 - File <b>" + blob_name + "</b> not loaded in DWH. Schedule Error : <b>" +  schedule_name + "</b>"} 
+                    response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams_4_4))
    except Exception as e :
+        #Slack
         slack_client.chat_postMessage(channel="#kap", text="Error File " + blob_name + ", execption : " + str(e) )
+        #Teams
+        msgTeams =  {"text":"Error File <b>" + blob_name + "</b>, execption : " + str(e)} 
+        response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams))
+        
         blob_client_instance.delete_blob()  
                
 
@@ -122,7 +146,9 @@ def loadInferAndPersist(file,file_name):
                     'Budget_CY_10', 'Budget_CY_11', 'Budget_CY_12', 'Actual_CY_01', 'Actual_CY_02', 'Actual_CY_03', 
                     'Actual_CY_04', 'Actual_CY_05', 'Actual_CY_06', 'Actual_CY_07', 'Actual_CY_08', 'Actual_CY_09', 
                     'Actual_CY_10', 'Actual_CY_11', 'Actual_CY_12', 'Actual_NY_01', 'Actual_NY_02', 'Actual_NY_03', 'CostCenter_Code']
-
+    
+    #License & Maintenance sheet name
+    licMainSheetName = str()
 
     for index, row in MBRparams.iterrows():
         BU_code = row['BU_Code']
@@ -130,6 +156,10 @@ def loadInferAndPersist(file,file_name):
         Currency_Code = row['Currency_Code']
         # Load a sheet into a DataFrame by its name
         for sheet_name in xls.sheet_names:
+            #Retrieve License & Maintenance correct sheet name 
+            if 'LICENSE' in sheet_name.upper().strip() and 'MAINTENANCE' in sheet_name.upper().strip():
+                licMainSheetName = sheet_name
+
             # Determine the row to start importing data based on the sheet name
             if sheet_name.endswith("FI_" + BU_code):
                 skiprows = 8 # 
@@ -165,7 +195,12 @@ def loadInferAndPersist(file,file_name):
                     else :
                         snow_df = session_dev.write_pandas(df_Finance,table_name,auto_create_table = True, overwrite=True)
                 except Exception as e :
+                    #Slack
                     slack_client.chat_postMessage(channel="#kap", text="3/4 - File " + file_name + " - Error in P&L sheet '" + sheet_name + "' (Skipped). Error : " + str(e))
+                    #Teams
+                    msgTeams =  {"text":"2/3 - File <b>" + file_name + "</b> - Error in P&L sheet <b>'" + sheet_name + "'</b> (Skipped). Error : " + str(e)} 
+                    response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams))
+
                     print(e)
                     pass
             
@@ -215,61 +250,65 @@ def loadInferAndPersist(file,file_name):
         else:
             snow_df =session_dev.write_pandas(KPI,table_name,auto_create_table = True, overwrite=True)
     except Exception as e:
+        #Slack
         slack_client.chat_postMessage(channel="#kap", text="3/4 - File " + file_name + " - Error in KPI Pyramid sheet '" + sheet_name + "' (Skipped). Error : " + str(e))
+        #Teams
+        msgTeams =  {"text":"2/3 - File <b>" + file_name + "</b> - Error in KPI Pyramid sheet <b>'" + sheet_name + "'</b> (Skipped). Error : " + str(e)} 
+        response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams))
+        
         pass
 
     ##################################################################################################################################################
-    # Load "License & Maintenance" worksheet
+    # Load "License & Maintenance" worksheet    
     try:
         df_polars_lm = pl.read_excel(
                 io.BytesIO(fileXlx) ,
-                sheet_name="License & Maintenance",  
-            xlsx2csv_options={"skip_empty_lines": False,"skip_hidden_rows": False},
+                sheet_name=licMainSheetName,  
+            xlsx2csv_options={"skip_empty_lines": False,"skip_hidden_rows": False,"infer_schema_length" : 10000},
             read_csv_options={"has_header": False, "new_columns": ["ANCHOR","BU", "VERSION", "PERIOD", "SOFTWARE_PARENT", 
                         "REV_LIC_PERPETUAL", "REV_LIC_NEW_SUBSCRIPTION", "REV_MAINT_1STYEAR","REV_LIC_RENEWED_SUBSCRIPTION","REV_MAINT_RENEWAL","REV_LIC_REFERRALS","TOTAL_REVENUE",
-                        "CP_LICPUR_PERPETUAL", "CP_LICPUR_NEW_SUBSCRIPTION", "CP_MAINTPUR_1STYEAR","CP_LICPUR_RENEWED_SUBSCRIPTION","CP_MAINT_RENEWAL","TOTAL_COST"]},  
+                        "CP_LICPUR_PERPETUAL", "CP_LICPUR_NEW_SUBSCRIPTION", "CP_MAINTPUR_1STYEAR","CP_LICPUR_RENEWED_SUBSCRIPTION","CP_MAINT_RENEWAL","TOTAL_COST"], 
+                        "dtypes":{"TOTAL_COST":str} 
+                        }  
                     )
-    except:
-        df_polars_lm = pl.read_excel(
-                io.BytesIO(fileXlx) ,
-                sheet_name="License & maintenance",  
-            xlsx2csv_options={"skip_empty_lines": False,"skip_hidden_rows": False},
-            read_csv_options={"has_header": False, "new_columns": ["ANCHOR","BU", "VERSION", "PERIOD", "SOFTWARE_PARENT", 
-                        "REV_LIC_PERPETUAL", "REV_LIC_NEW_SUBSCRIPTION", "REV_MAINT_1STYEAR","REV_LIC_RENEWED_SUBSCRIPTION","REV_MAINT_RENEWAL","REV_LIC_REFERRALS","TOTAL_REVENUE",
-                        "CP_LICPUR_PERPETUAL", "CP_LICPUR_NEW_SUBSCRIPTION", "CP_MAINTPUR_1STYEAR","CP_LICPUR_RENEWED_SUBSCRIPTION","CP_MAINT_RENEWAL","TOTAL_COST"]},  
-                    )
+        
+        #drop the columns we do need
+        df_new_lm = df_polars_lm.drop("ANCHOR") 
+        # keep only the first 13 columns
+        df_new_lm = df_new_lm.select(df_new_lm.columns[:17])
+        # remove the lines we do not need the info for the KPI pyramid only starts from line 78
+        df_new_lm = df_new_lm.slice(125, len(df_polars_lm)-78)
+        # remove rows where column "BU" is null
+        df_new_lm = df_new_lm.filter(pl.col("BU").is_not_null())
 
-    #drop the columns we do need
-    df_new_lm = df_polars_lm.drop("ANCHOR") 
-    # keep only the first 13 columns
-    df_new_lm = df_new_lm.select(df_new_lm.columns[:17])
-    # remove the lines we do not need the info for the KPI pyramid only starts from line 78
-    df_new_lm = df_new_lm.slice(125, len(df_polars_lm)-78)
-    # remove rows where column "BU" is null
-    df_new_lm = df_new_lm.filter(pl.col("BU").is_not_null())
+        # Add additional columns
+        # convert the monthname year to a valid end of month date
+        LIC_MAIN = df_new_lm.to_pandas()
+        #LIC_MAIN['PERIOD'] = pd.to_datetime(LIC_MAIN['PERIOD'], format="%m-%d-%Y") 
+        # KPI['PERIOD'] = KPI['PERIOD'].dt.date
+        # converted it to string again, in the dbt model there's a convertsion to a date 
+        #LIC_MAIN['PERIOD'] = LIC_MAIN['PERIOD'].dt.strftime('%Y-%m-%d')
 
-    # Add additional columns
-    # convert the monthname year to a valid end of month date
-    LIC_MAIN = df_new_lm.to_pandas()
-    #LIC_MAIN['PERIOD'] = pd.to_datetime(LIC_MAIN['PERIOD'], format="%m-%d-%Y") 
-    # KPI['PERIOD'] = KPI['PERIOD'].dt.date
-    # converted it to string again, in the dbt model there's a convertsion to a date 
-    #LIC_MAIN['PERIOD'] = LIC_MAIN['PERIOD'].dt.strftime('%Y-%m-%d')
-
-    LIC_MAIN['CREATED_ON'] = datetime.now().astimezone(pytz.timezone('Europe/Paris')).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-    # snowflake is expecting a string value and not a date, dbt is failing on this
-    LIC_MAIN['MBR_MONTH'] = str(MBRmonth)
-    LIC_MAIN['MBR_FileName'] = str(file_name)
-    # Compose new table name
-    table_name_lm =  "R_LIC_MAINT_"  + str(MBRscope).upper()
-    try:
+        LIC_MAIN['CREATED_ON'] = datetime.now().astimezone(pytz.timezone('Europe/Paris')).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+        # snowflake is expecting a string value and not a date, dbt is failing on this
+        LIC_MAIN['MBR_MONTH'] = str(MBRmonth)
+        LIC_MAIN['MBR_FileName'] = str(file_name)
+        # Compose new table name
+        table_name_lm =  "R_LIC_MAINT_"  + str(MBRscope).upper()
+        
         if(mbr_env== 'P'):
             snow_df =session_prod.write_pandas(LIC_MAIN,table_name_lm,auto_create_table = True, overwrite=True)
         else : 
             snow_df =session_dev.write_pandas(LIC_MAIN,table_name_lm,auto_create_table = True, overwrite=True)
-    except Exception as e:
-        slack_client.chat_postMessage(channel="#kap", text="3/4 - File " + file_name + " - Error in Lice & Maintenance sheet '" + sheet_name + "' (Skipped). Error : " + str(e))
-        pass
+
+    except Exception as e: 
+        #Slack
+        slack_client.chat_postMessage(channel="#kap", text="3/4 - File " + file_name + " - Error in Lice & Maintenance sheet (Skipped). Error : " + str(e))       
+        #Teams
+        msgTeams =  {"text":"2/3 - File <b>" + file_name + "</b> - Error in Lice & Maintenance sheet (Skipped). Error : " + str(e)} 
+        response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams))
+
+        pass        
 
     return snow_df, MBRscope,mbr_env
 
