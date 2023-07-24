@@ -21,9 +21,10 @@ import azure.functions as func
 #Global variable
 container_name_az = str("mbr-landing")
 
-slack_client = WebClient(token=os.getenv('SLACK_BOT_TOKEN'))
+#slack_client = WebClient(token=os.getenv('SLACK_BOT_TOKEN'))
 
 urlTeams = "https://keyrusgroup.webhook.office.com/webhookb2/68b15510-2653-4855-be23-14cd5190e969@168e48b2-81f0-4aac-bc77-d58d07d205e2/IncomingWebhook/1217263db75b4b1ea586455578c14fef/7d069be0-a9ad-4d5d-9109-8a307e57a11d"
+urlTeamsBU = "https://keyrusgroup.webhook.office.com/webhookb2/68b15510-2653-4855-be23-14cd5190e969@168e48b2-81f0-4aac-bc77-d58d07d205e2/IncomingWebhook/5d27e0016d2746efbdebd7444319945f/7d069be0-a9ad-4d5d-9109-8a307e57a11d"
 headerTeams = {'Content-Type':'application/json'}
 
 def main(myblob: func.InputStream):
@@ -38,7 +39,7 @@ def main(myblob: func.InputStream):
    blob_data = blob_client_instance.download_blob()
    
    #Slack
-   slack_client.chat_postMessage(channel="#kap", text="2/4 - File " + blob_name + " received  at " + datetime.now().astimezone(pytz.timezone('Europe/Paris')).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3] + " (Python Script)")
+   #slack_client.chat_postMessage(channel="#kap", text="2/4 - File " + blob_name + " received  at " + datetime.now().astimezone(pytz.timezone('Europe/Paris')).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3] + " (Python Script)")
    #Teams
    msgTeams_2_4 =  {"text":"1/3 - File <b>" + blob_name + "</b> received  at " + datetime.now().astimezone(pytz.timezone('Europe/Paris')).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]}
    response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams_2_4))
@@ -50,7 +51,7 @@ def main(myblob: func.InputStream):
    
         if num_rows > 2:
                 #Slack
-                slack_client.chat_postMessage(channel="#kap", text="3/4 - File " + blob_name + " raw data loaded in " + mbr_env_nm + " Snowflake (MBR Scope : " + mbr_scope +")" )
+                #slack_client.chat_postMessage(channel="#kap", text="3/4 - File " + blob_name + " raw data loaded in " + mbr_env_nm + " Snowflake (MBR Scope : " + mbr_scope +")" )
                 #Teams
                 msgTeams_3_4 =  {"text":"2/3 - File <b>" + blob_name + "</b> raw data loaded in " + mbr_env_nm + " db (MBR Scope : <b>" + mbr_scope +"</b>)"}
                 response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams_3_4))
@@ -60,7 +61,7 @@ def main(myblob: func.InputStream):
                 # Now you can do something with the status
                 if schedule_status == "SUCCESS":
                     #Slack
-                    slack_client.chat_postMessage(channel="#kap", text="4/4 - File " + blob_name + " loaded in DWH. Schedul Success : " +  schedule_name)
+                    #slack_client.chat_postMessage(channel="#kap", text="4/4 - File " + blob_name + " loaded in DWH. Schedul Success : " +  schedule_name)
                     #Teams
                     msgTeams_4_4 =  {"text":"3/3 - File <b>" + blob_name + "</b> loaded in DWH. Schedule Success : <b>" +  schedule_name + "</b>"} 
                     response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams_4_4))
@@ -68,13 +69,13 @@ def main(myblob: func.InputStream):
                     blob_client_instance.delete_blob()            
                 else:
                     #Slack
-                    slack_client.chat_postMessage(channel="#kap", text="4/4 - File " + blob_name + " not loaded in DWH. Schedul Error : " + schedule_name)
+                    #slack_client.chat_postMessage(channel="#kap", text="4/4 - File " + blob_name + " not loaded in DWH. Schedul Error : " + schedule_name)
                     #Teams
                     msgTeams_4_4 =  {"text":"3/3 - File <b>" + blob_name + "</b> not loaded in DWH. Schedule Error : <b>" +  schedule_name + "</b>"} 
                     response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams_4_4))
    except Exception as e :
         #Slack
-        slack_client.chat_postMessage(channel="#kap", text="Error File " + blob_name + ", execption : " + str(e) )
+        #slack_client.chat_postMessage(channel="#kap", text="Error File " + blob_name + ", execption : " + str(e) )
         #Teams
         msgTeams =  {"text":"Error File <b>" + blob_name + "</b>, execption : " + str(e)} 
         response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams))
@@ -196,7 +197,7 @@ def loadInferAndPersist(file,file_name):
                         snow_df = session_dev.write_pandas(df_Finance,table_name,auto_create_table = True, overwrite=True)
                 except Exception as e :
                     #Slack
-                    slack_client.chat_postMessage(channel="#kap", text="3/4 - File " + file_name + " - Error in P&L sheet '" + sheet_name + "' (Skipped). Error : " + str(e))
+                    #slack_client.chat_postMessage(channel="#kap", text="3/4 - File " + file_name + " - Error in P&L sheet '" + sheet_name + "' (Skipped). Error : " + str(e))
                     #Teams
                     msgTeams =  {"text":"2/3 - File <b>" + file_name + "</b> - Error in P&L sheet <b>'" + sheet_name + "'</b> (Skipped). Error : " + str(e)} 
                     response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams))
@@ -251,7 +252,7 @@ def loadInferAndPersist(file,file_name):
             snow_df =session_dev.write_pandas(KPI,table_name,auto_create_table = True, overwrite=True)
     except Exception as e:
         #Slack
-        slack_client.chat_postMessage(channel="#kap", text="3/4 - File " + file_name + " - Error in KPI Pyramid sheet '" + sheet_name + "' (Skipped). Error : " + str(e))
+        #slack_client.chat_postMessage(channel="#kap", text="3/4 - File " + file_name + " - Error in KPI Pyramid sheet '" + sheet_name + "' (Skipped). Error : " + str(e))
         #Teams
         msgTeams =  {"text":"2/3 - File <b>" + file_name + "</b> - Error in KPI Pyramid sheet <b>'" + sheet_name + "'</b> (Skipped). Error : " + str(e)} 
         response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams))
@@ -303,7 +304,7 @@ def loadInferAndPersist(file,file_name):
 
     except Exception as e: 
         #Slack
-        slack_client.chat_postMessage(channel="#kap", text="3/4 - File " + file_name + " - Error in Lice & Maintenance sheet (Skipped). Error : " + str(e))       
+        #slack_client.chat_postMessage(channel="#kap", text="3/4 - File " + file_name + " - Error in Lice & Maintenance sheet (Skipped). Error : " + str(e))       
         #Teams
         msgTeams =  {"text":"2/3 - File <b>" + file_name + "</b> - Error in Lice & Maintenance sheet (Skipped). Error : " + str(e)} 
         response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams))
