@@ -21,12 +21,12 @@ def main(mytimer: func.TimerRequest) -> None:
     logging.info('Python timer trigger function ran at %s', utc_timestamp)
 
     #Run every 1st of the month to revrieve previous month rate
-    previous_month = date.today() + pd.DateOffset(months=0)
+    previous_month = date.today() + pd.DateOffset(months=-1)
     
-    for i in range(1, 18):
+    for i in range(1, monthrange(previous_month.year, previous_month.month)[1]):
         day = str(previous_month.year) + '-' + ('0' +str(previous_month.month))[-2:] + '-' + ('0' +str(i))[-2:]     
         print(day)   
-        fx_rates_url = f'http://api.exchangeratesapi.io/v1/{day}?access_key=cd9624ad550600360db79c4386b2a9ac&base=EUR&symbols=EUR,USD,CAD,GBP,BRL,SGD'
+        fx_rates_url = f'http://api.exchangeratesapi.io/v1/{day}?access_key=cd9624ad550600360db79c4386b2a9ac&base=EUR&symbols=AED,BRL,CAD,COP,ILS,GBP,MAD,SGD,TND,USD,VND'
     
         #Read json data from api
         fx_rates_json_data = read_fx_api(fx_rates_url)
@@ -62,7 +62,7 @@ def create_sf_session():
 
 def pd_reads_json(fx_json_data):
     # Rename the columns
-    new_columns = ['SUCCESS', 'TIMESTAMP', 'HISTORICAL', 'INPUTCURRENCY', 'DATE', 'EUR','USD','CAD','GBP','BRL','SGD']   
+    new_columns = ['SUCCESS', 'TIMESTAMP', 'HISTORICAL', 'INPUTCURRENCY', 'DATE', 'AED','BRL','CAD','COP','ILS','GBP','MAD','SGD','TND','USD','VND']   
     
     pd_df = pd.DataFrame(fx_json_data)
     pd_df.columns = new_columns
