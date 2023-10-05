@@ -93,7 +93,7 @@ def loadInferAndPersist(file, file_name):
             # Rename the columns
             new_columns_kpi = ['BU', 'SCENARIO', 'PERIOD', 'COST_CENTER', 'PEOPLE_TYPE', 'LEVEL_SENIORITY', 
                     'ENDOFMONTH_EFT', 'BILLABLE_DAYS', 'INTERNAL_PROJECT', 'PRE_SALES_DAYS', 'TRAINING_DAYS', 'INACTIVITY_DAYS','HOLIDAYS',
-                    'SICK_DAYS', 'TOTAL_DAYS', 'OCCUPANCY_RATE', 'SRVC_SALES_BEF_BONIMALI',  'DAILY_RATE', 'ANNUAL_DIRECT_COSTS', 'ANNUAL_PRODUCTION_DAYS', 
+                    'SICK_DAYS', 'TOTAL_DAYS', 'OCCUPANCY_RATE', 'SRVC_SALES_BEF_BONIMALI',  'DAILY_RATE', 'ANNUAL_PACKAGE_COSTS', 'ANNUAL_PRODUCTION_DAYS', 
                     'DAILY_COST','DAILY_MARGIN']
                
             skiprows = 125
