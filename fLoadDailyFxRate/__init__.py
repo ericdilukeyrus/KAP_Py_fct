@@ -1,9 +1,10 @@
-import datetime
+import datetime as dt
 import logging
 import pandas as pd
 import requests
 from snowflake.snowpark.session import Session
 from datetime import date
+
 from calendar import Calendar, monthrange
 
 import azure.functions as func
@@ -12,8 +13,8 @@ import azure.functions as func
 
 
 def main(mytimer: func.TimerRequest) -> None:
-    utc_timestamp = datetime.datetime.utcnow().replace(
-        tzinfo=datetime.timezone.utc).isoformat()
+    utc_timestamp = dt.datetime.utcnow().replace(
+        tzinfo=dt.timezone.utc).isoformat()
 
     if mytimer.past_due:
         logging.info('The timer is past due!')
@@ -23,8 +24,12 @@ def main(mytimer: func.TimerRequest) -> None:
     #Run every 1st of the month to revrieve previous month rate
     previous_month = date.today() + pd.DateOffset(months=-1)
     
-    for i in range(1, monthrange(previous_month.year, previous_month.month)[1]):
-        day = str(previous_month.year) + '-' + ('0' +str(previous_month.month))[-2:] + '-' + ('0' +str(i))[-2:]     
+    #for i in range(1, monthrange(previous_month.year, previous_month.month)[1]):
+    for i in range(0,365):
+        #day = str(previous_month.year) + '-' + ('0' +str(previous_month.month))[-2:] + '-' + ('0' +str(i))[-2:]     
+        start_dt = dt.datetime.strptime('2022-01-01','%y-%m-%d') + pd.DateOffset(days=i)
+
+        day = str(start_dt) 
         print(day)   
         fx_rates_url = f'http://api.exchangeratesapi.io/v1/{day}?access_key=cd9624ad550600360db79c4386b2a9ac&base=EUR&symbols=AED,BRL,CAD,COP,ILS,GBP,MAD,SGD,TND,USD,VND'
     
