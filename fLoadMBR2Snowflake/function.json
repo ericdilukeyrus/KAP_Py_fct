@@ -6,6 +6,7 @@
       "type": "blobTrigger",
       "direction": "in",
       "path": "mbr-landing/{name}",  
+      "source": "EventGrid",
       "connection": "ocean01_STORAGE"
     }
   ]
