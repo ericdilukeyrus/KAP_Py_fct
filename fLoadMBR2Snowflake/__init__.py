@@ -45,6 +45,7 @@ def main(myblob: func.InputStream):
     if 'BUDGET' in blob_name.upper().strip(): 
         try:
             loadBudgetInferAndPersist(blob_data,blob_name)
+            blob_client_instance.delete_blob()  
         except Exception as e :
             #Teams
             msgTeams =  {"text":"Error File <b>" + blob_name + "</b>, execption : " + str(e)} 
@@ -81,8 +82,7 @@ def main(myblob: func.InputStream):
             response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams))
             
             blob_client_instance.delete_blob()  
-                
-
+             
 def excel_to_df(input_file_path):
 
     # load the parameters from the worksheet they are the starting point for everything
@@ -377,11 +377,11 @@ def loadBudgetInferAndPersist(file, file_name):
             new_columns_kpi = ['BU', 'SCENARIO', 'PERIOD', 'COST_CENTER', 'PEOPLE_TYPE', 'LEVEL_SENIORITY', 
                     'ENDOFMONTH_EFT', 'BILLABLE_DAYS', 'INTERNAL_PROJECT', 'PRE_SALES_DAYS', 'TRAINING_DAYS', 'INACTIVITY_DAYS','HOLIDAYS',
                     'SICK_DAYS', 'TOTAL_DAYS', 'OCCUPANCY_RATE', 'SRVC_SALES_BEF_BONIMALI',  'DAILY_RATE', 'ANNUAL_PACKAGE_COSTS', 'ANNUAL_PRODUCTION_DAYS', 
-                    'DAILY_COST','DAILY_MARGIN']
+                    'DAILY_COST','DAILY_MARGIN','IN','OUT','TRANSFER_PROMOTIONS']
                
             skiprows = 125
             #Get the sheet that contains KPI Pyramid data
-            df_kpi = pd.read_excel(xls,sheet_name, skiprows=skiprows,usecols='B:W', converters={k: str for k in range(22)})
+            df_kpi = pd.read_excel(xls,sheet_name, skiprows=skiprows,usecols='B:Z', converters={k: str for k in range(25)})
             #Apply the new columns names 
             df_kpi.columns = new_columns_kpi
             #Add additional columns
@@ -544,8 +544,30 @@ def loadBudgetInferAndPersist(file, file_name):
             except Exception as e:
                 print(e) 
 
+        #Load Churn
+        if sheet_name == "Churn":
+            #Rename the columns
+            new_columns_churn = ['BU','SCENARIO','PERIOD','SOFTWARE_PARTNERS','CHURN_RATE']
 
+            skiprows = 34
+            #Get the sheet that contains Churn data
+            df_churn = pd.read_excel(xls,sheet_name, skiprows=skiprows,usecols='B:F', converters={k: str for k in range(5)})
+            #Apply the new columns names
+            df_churn.columns = new_columns_churn
+            #Add additional columns
+            df_churn['BU_NAME'] = str(BUD_BU).strip()
+            df_churn['BUD_PERIOD'] = str(BUD_Period)
+            df_churn['BUD_CURRENCY'] = BUD_Curr
+            df_churn['CREATED_ON'] =  datetime.now().astimezone(pytz.timezone('Europe/Paris')).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+            df_churn['BUD_FILENAME'] = str(file_name)
 
+            #Compose a new valid tablename for the Churn sheet
+            table_name = "R_BUD_CHURN_" + str(BUD_BU).replace(" ","_").upper()
+
+            try:
+                snow_df = session_dev.write_pandas(df_churn, table_name, auto_create_table=True, overwrite=True)
+            except Exception as e:
+                print(e) 
 
 def run_paradygme_schedule(mbr_scope, mbr_env):
 
