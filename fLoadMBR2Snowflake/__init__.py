@@ -36,24 +36,43 @@ def main(myblob: func.InputStream):
     blob_name = myblob.name.split("/")[1]
     blob_client_instance = blob_service_client.get_blob_client(container_name_az, blob_name, snapshot=None)
     blob_data = blob_client_instance.download_blob()
-   
-    #Teams
-    msgTeams_2_4 =  {"text":"1/3 - File <b>" + blob_name + "</b> received  at " + datetime.now().astimezone(pytz.timezone('Europe/Paris')).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]}
-    response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams_2_4))
+        
 
     #MBR or BUDGET
     if 'BUDGET' in blob_name.upper().strip(): 
         try:
-            loadBudgetInferAndPersist(blob_data,blob_name)
-            blob_client_instance.delete_blob()  
+            if 'CORPORATE' in blob_name.upper().strip():
+                #Teams
+                msgTeams_2_4 =  {"text":"1/2 - Corporate budget file <b>" + blob_name + "</b> received  at " + datetime.now().astimezone(pytz.timezone('Europe/Paris')).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]}
+                response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams_2_4))
+
+                bu_name = loadCorpBudgetInferAndPersist(blob_data,blob_name)
+                blob_client_instance.delete_blob()  
+
+                msgTeams_2_5 =  {"text":"2/2 - Corporate budget file <b>" + blob_name + "</b> raw data (BU: <b>" + bu_name + "</b>) loaded in db at " + datetime.now().astimezone(pytz.timezone('Europe/Paris')).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]}
+                response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams_2_5))
+            else:
+                #Teams
+                msgTeams_2_4 =  {"text":"1/2 - Budget file <b>" + blob_name + "</b> received  at " + datetime.now().astimezone(pytz.timezone('Europe/Paris')).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]}
+                response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams_2_4))
+
+                bu_name = loadBudgetInferAndPersist(blob_data,blob_name)
+                blob_client_instance.delete_blob()    
+
+                msgTeams_2_5 =  {"text":"2/2 - Budget file <b>" + blob_name + "</b> raw data (BU: <b>" + bu_name + "</b>) loaded in db at " + datetime.now().astimezone(pytz.timezone('Europe/Paris')).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]}
+                response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams_2_5))
+            
         except Exception as e :
             #Teams
-            msgTeams =  {"text":"Error File <b>" + blob_name + "</b>, execption : " + str(e)} 
+            msgTeams =  {"text":"1/2 - Error File <b>" + blob_name + "</b>, execption : " + str(e)} 
             response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams))
             
             blob_client_instance.delete_blob()  
     else :        
         try: 
+            #Teams
+            msgTeams_2_4 =  {"text":"1/3 - File <b>" + blob_name + "</b> received  at " + datetime.now().astimezone(pytz.timezone('Europe/Paris')).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]}
+            response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams_2_4))    
             snowpark_df, mbr_scope, mbr_env = loadInferAndPersist(blob_data,blob_name)
             num_rows = snowpark_df.count()
             mbr_env_nm = 'DEV' if mbr_env=='D' else 'PROD'        
@@ -376,7 +395,7 @@ def loadBudgetInferAndPersist(file, file_name):
             # Rename the columns
             new_columns_kpi = ['BU', 'SCENARIO', 'PERIOD', 'COST_CENTER', 'PEOPLE_TYPE', 'LEVEL_SENIORITY', 
                     'ENDOFMONTH_EFT', 'BILLABLE_DAYS', 'INTERNAL_PROJECT', 'PRE_SALES_DAYS', 'TRAINING_DAYS', 'INACTIVITY_DAYS','HOLIDAYS',
-                    'SICK_DAYS', 'TOTAL_DAYS', 'OCCUPANCY_RATE', 'SRVC_SALES_BEF_BONIMALI',  'DAILY_RATE', 'ANNUAL_PACKAGE_COSTS', 'ANNUAL_PRODUCTION_DAYS', 
+                    'SICK_DAYS', 'TOTAL_DAYS', 'OCCUPANCY_RATE', 'SRVC_SALES_BEF_BONIMALI',  'DAILY_RATE', 'ANNUAL_DIRECT_COSTS', 'ANNUAL_PRODUCTION_DAYS', 
                     'DAILY_COST','DAILY_MARGIN','IN','OUT','TRANSFER_PROMOTIONS']
                
             skiprows = 125
@@ -463,7 +482,7 @@ def loadBudgetInferAndPersist(file, file_name):
         #Load Revenue distribution
         if sheet_name == "Revenue distribution":
             #Rename the columns
-            new_columns_rev_dis = ['BU','SCENARIO','PERIOD','CLIENT_NAME','PEOPLE_TYPE','LEVEL_SENIORITY','TOTAL_SIGNING','BACKLOG','PIPELINE','BLUE_SKY','TOTAL']
+            new_columns_rev_dis = ['BU','SCENARIO','PERIOD','REVENUE_TYPE','REVENUE_SUB_TYPE','LEVEL_SENIORITY','TOTAL_SIGNING','BACKLOG','PIPELINE','BLUE_SKY','TOTAL']
 
             skiprows = 44
             #Get the sheet that contains KPI Pyramid data
@@ -568,6 +587,56 @@ def loadBudgetInferAndPersist(file, file_name):
                 snow_df = session_dev.write_pandas(df_churn, table_name, auto_create_table=True, overwrite=True)
             except Exception as e:
                 print(e) 
+
+    return BUD_BU
+
+def loadCorpBudgetInferAndPersist(file, file_name):
+    connection_sf = "creds_bud_dev.json"
+    #Connect to SF
+    with open(connection_sf) as f:
+        connection_parameters = json.load(f)
+    session_dev = Session.builder.configs(connection_parameters).create()
+
+    #Call the excel to dataframe function
+    fileXlx = file.readall()
+    BUD_BU, BUD_Period, BUD_Curr, xls = excel_budget_to_df(fileXlx)
+
+    # Back to logic to load new data for a BUDGET excel document       
+    
+    #Load aé sheet into a dataframe by its name
+    for sheet_name in xls.sheet_names:
+        #Load P&L worksheet
+        if sheet_name == "P&L FI_BU01":
+            # List of column names we want to keep, I used the index because the structure of the file should not be changed
+            columns_to_be_read = [0, 1, 2, 4, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 151]
+            # Rename the columns
+            new_columns = ['INDEX', 'ANAPLANT_INDEX', 'PBI_INDEX', 'K_NATURE', 'BUDGET_CY_01', 'BUDGET_CY_02', 'BUDGET_CY_03', 
+                    'BUDGET_CY_04', 'BUDGET_CY_05', 'BUDGET_CY_06', 'BUDGET_CY_07', 'BUDGET_CY_08', 'BUDGET_CY_09', 
+                    'BUDGET_CY_10', 'BUDGET_CY_11', 'BUDGET_CY_12', 'COSTCENTER_CODE']
+    
+            skiprows = 8
+            #Get the sheet that contains the P&L data
+            df_finance = pd.read_excel(xls,sheet_name,skiprows=skiprows,usecols=columns_to_be_read)
+            #Apply the new column names
+            df_finance.columns=new_columns
+            #Add additional columns
+            df_finance['BU_NAME'] = str(BUD_BU).strip()
+            df_finance['BUD_PERIOD'] = str(BUD_Period)
+            df_finance['BUD_CURRENCY'] = BUD_Curr
+            df_finance['CREATED_ON'] =  datetime.now().astimezone(pytz.timezone('Europe/Paris')).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+            df_finance['BUD_FILENAME'] = str(file_name)
+  
+            #Keep data until line 573
+            df_finance = df_finance.head(573)
+            #Compose a new valid tablename for the P&L sheet
+            table_name = "R_CORP_BUD_PL_" + str(BUD_BU).replace(" ","_").upper()
+            
+            try:
+                snow_df = session_dev.write_pandas(df_finance,table_name,auto_create_table=True, overwrite=True)
+            except Exception as e:
+                print(e)
+
+    return BUD_BU
 
 def run_paradygme_schedule(mbr_scope, mbr_env):
 
