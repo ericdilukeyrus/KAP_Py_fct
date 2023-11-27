@@ -368,7 +368,7 @@ def loadBudgetInferAndPersist(file, file_name):
     
             skiprows = 8
             #Get the sheet that contains the P&L data
-            df_finance = pd.read_excel(xls,sheet_name,skiprows=skiprows,usecols=columns_to_be_read)
+            df_finance = pd.read_excel(xls,sheet_name,skiprows=skiprows,usecols=columns_to_be_read, converters={k: str for k in range(17)})
             #Apply the new column names
             df_finance.columns=new_columns
             #Add additional columns
