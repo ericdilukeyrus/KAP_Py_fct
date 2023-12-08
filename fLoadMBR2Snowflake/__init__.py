@@ -159,6 +159,14 @@ def loadInferAndPersist(file,file_name):
     FROM OCEAN_ADM.MBR_SOURCES WHERE MBR_SCOPE = '{MBRscope}' ''').collect()
 
     mbr_env = mbr_scope_state[0][2] 
+
+    #Save parameter
+    table_name = "R_MBR_PARAMS_"  + str(MBRscope).upper()
+    if(mbr_env== 'P'):
+        snow_df = session_prod.write_pandas(MBRparams,table_name,auto_create_table = True, overwrite=True)
+    else :
+        snow_df = session_dev.write_pandas(MBRparams,table_name,auto_create_table = True, overwrite=True)
+
     #if(str.upper(mbr_env)== 'D'):
     #    session_prod.close()
     #else :
@@ -339,6 +347,44 @@ def loadInferAndPersist(file,file_name):
         response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams))
 
         pass        
+
+    #######################IC DECLARATION#####################################    
+    try:
+        skiprows = 9
+        sheet_name = "IC declaration"
+        
+        # List of column names we want to keep, I used the index because the structure of the file should not be changed
+        columns_to_be_read = [1, 2,3, 4,5,6,7,8,9,10,11,12,13,14,15, 18,19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29,
+                               32,33,34,35,36,37,38,39,40,41,42,43] #38
+        # Rename the columns
+        new_columns = ['BU', 'NATURE','IC_PARTNER', 'Actual_LY_01', 'Actual_LY_02', 'Actual_LY_03', 
+                    'Actual_LY_04', 'Actual_LY_05', 'Actual_LY_06', 'Actual_LY_07', 'Actual_LY_08', 'Actual_LY_09', 
+                    'Actual_LY_10', 'Actual_LY_11', 'Actual_LY_12', 'Budget_CY_01', 'Budget_CY_02', 'Budget_CY_03', 
+                    'Budget_CY_04', 'Budget_CY_05', 'Budget_CY_06', 'Budget_CY_07', 'Budget_CY_08', 'Budget_CY_09', 
+                    'Budget_CY_10', 'Budget_CY_11', 'Budget_CY_12', 'Actual_CY_01', 'Actual_CY_02', 'Actual_CY_03', 
+                    'Actual_CY_04', 'Actual_CY_05', 'Actual_CY_06', 'Actual_CY_07', 'Actual_CY_08', 'Actual_CY_09', 
+                    'Actual_CY_10', 'Actual_CY_11', 'Actual_CY_12']
+        
+        #Get the IC sheet 
+        df_ic = pd.read_excel(fileXlx,sheet_name,skiprows=skiprows,usecols=columns_to_be_read)
+        #Apply the new columns names
+        df_ic.columns = new_columns
+        #Add additional columns
+        df_ic["MBR_SCOPE"] = str(MBRscope)
+        df_ic['MBR_MONTH'] = str(MBRmonth)
+        df_ic['CREATED_ON'] =  datetime.now().astimezone(pytz.timezone('Europe/Paris')).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+        df_ic['MBR_FileName'] = str(file_name)
+        
+
+        # Compose new table name
+        table_name_ic =  "R_IC_"  + str(MBRscope).upper()
+        if(mbr_env== 'P'):
+            snow_df =session_prod.write_pandas(df_ic,table_name_ic,auto_create_table = True, overwrite=True)
+        else : 
+            snow_df =session_dev.write_pandas(df_ic,table_name_ic,auto_create_table = True, overwrite=True)
+
+    except Exception as e:
+        print(e)    
 
     return snow_df, MBRscope,mbr_env
 
