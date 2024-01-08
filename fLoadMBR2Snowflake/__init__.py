@@ -197,7 +197,7 @@ def loadInferAndPersist(file,file_name):
             #Retrieve License & Maintenance correct sheet name 
             if 'LICENSE' in sheet_name.upper().strip() and 'MAINTENANCE' in sheet_name.upper().strip():
                 licMainSheetName = sheet_name
-
+                
             # Determine the row to start importing data based on the sheet name
             if sheet_name.endswith("FI_" + BU_code):
                 skiprows = 8 # 
@@ -222,8 +222,8 @@ def loadInferAndPersist(file,file_name):
                     'Actual_CY_04', 'Actual_CY_05', 'Actual_CY_06', 'Actual_CY_07', 'Actual_CY_08', 'Actual_CY_09', 
                     'Actual_CY_10', 'Actual_CY_11', 'Actual_CY_12', 'Actual_NY_01', 'Actual_NY_02', 'Actual_NY_03', 
                     'BU_Code', 'BU_Name', 'Currency_Code', 'MBR_Scope', 'MBR_Month', 'CostCenter_Code', 'CREATED_ON','MBR_FileName' ]]
-                #Keep data until line 473
-                df_Finance = df_Finance.head(473)
+                #Keep data until line 496
+                df_Finance = df_Finance.head(602)
                 # compose a new valid tablename for the P&L file
                 table_name = sheet_name.replace("P&L ", "R_PL_").replace("FI", "FI_" + str(MBRscope).upper())
                 # write the data to the P&L tables on snowflake
@@ -244,147 +244,149 @@ def loadInferAndPersist(file,file_name):
             
     
     ###############################################################################################################################                
+    
+    
     # Load the "KPI Pyramid" worksheet
     # used Polars because the pandas.read_excel() was taking a very, very long time 
-    df_polars = pl.read_excel(
-            io.BytesIO(fileXlx) ,
-            sheet_name="KPI Pyramid",  
-        xlsx2csv_options={"skip_empty_lines": False,"skip_hidden_rows": False},
-        read_csv_options={"has_header": False, "new_columns": ["ANCHOR","BU", "VERSION", "PERIOD", "COST_CENTER", "PEOPLE_TYPE", "LEVEL_SENIORITY", 
-                    "ENDOFMONTH_EFT", "SRVC_SALES_BEF_BONIMALI", "BILLABLE_DAYS", "DAILY_RATE", 
-                    "ANNUAL_DIRECT_COSTS", "ANNUAL_PRODUCTION_DAYS", "DAILY_COST"]},  
-                )
-    #drop the columns we do need
-    df_new = df_polars.drop("ANCHOR") 
-    # keep only the first 13 columns
-    df_new = df_new.select(df_new.columns[:13])
-    # remove the lines we do not need the info for the KPI pyramid only starts from line 78
-    df_new = df_new.slice(78, len(df_polars)-78)
-    # remove rows where column "BU" is null
-    df_new = df_new.filter(pl.col("BU").is_not_null())
-    
-
-    # convert to pandas dataframe because the snowloader is dependant on pandas datatypes
-    # KPI = df_new.to_pandas()
-
-
-    # Add additional columns
-        # convert the monthname year to a valid end of month date
-    KPI = df_new.to_pandas()
-    KPI['PERIOD'] = pd.to_datetime(KPI['PERIOD'], format="%b-%y") + pd.offsets.MonthEnd(1)
-    # KPI['PERIOD'] = KPI['PERIOD'].dt.date
-    # converted it to string again, in the dbt model there's a convertsion to a date 
-    KPI['PERIOD'] = KPI['PERIOD'].dt.strftime('%Y-%m-%d')
-
-    KPI['CREATED_ON'] = datetime.now().astimezone(pytz.timezone('Europe/Paris')).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-    # snowflake is expecting a string value and not a date, dbt is failing on this
-    KPI['MBR_MONTH'] = str(MBRmonth)
-    KPI['MBR_FileName'] = str(file_name)
-    # Compose new table name
-    table_name = "KPI Pyramid".replace("KPI ", "R_KPI_").replace("Pyramid", "PYRAMID_" + str(MBRscope).upper())
-    try:
-        if(mbr_env== 'P'):
-            snow_df =session_prod.write_pandas(KPI,table_name,auto_create_table = True, overwrite=True)
-        else:
-            snow_df =session_dev.write_pandas(KPI,table_name,auto_create_table = True, overwrite=True)
-    except Exception as e:
-        #Slack
-        #slack_client.chat_postMessage(channel="#kap", text="3/4 - File " + file_name + " - Error in KPI Pyramid sheet '" + sheet_name + "' (Skipped). Error : " + str(e))
-        #Teams
-        msgTeams =  {"text":"2/3 - File <b>" + file_name + "</b> - Error in KPI Pyramid sheet <b>'" + sheet_name + "'</b> (Skipped). Error : " + str(e)} 
-        response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams))
-        
-        pass
-
-    ##################################################################################################################################################
-    # Load "License & Maintenance" worksheet    
-    try:
-        df_polars_lm = pl.read_excel(
+    if('KPI Pyramid' in xls.sheet_names):
+        df_polars = pl.read_excel(
                 io.BytesIO(fileXlx) ,
-                sheet_name=licMainSheetName,  
-            xlsx2csv_options={"skip_empty_lines": False,"skip_hidden_rows": False,"infer_schema_length" : 10000},
-            read_csv_options={"has_header": False, "new_columns": ["ANCHOR","BU", "VERSION", "PERIOD", "SOFTWARE_PARENT", 
-                        "REV_LIC_PERPETUAL", "REV_LIC_NEW_SUBSCRIPTION", "REV_MAINT_1STYEAR","REV_LIC_RENEWED_SUBSCRIPTION","REV_MAINT_RENEWAL","REV_LIC_REFERRALS","TOTAL_REVENUE",
-                        "CP_LICPUR_PERPETUAL", "CP_LICPUR_NEW_SUBSCRIPTION", "CP_MAINTPUR_1STYEAR","CP_LICPUR_RENEWED_SUBSCRIPTION","CP_MAINT_RENEWAL","TOTAL_COST"], 
-                        "dtypes":{"TOTAL_COST":str} 
-                        }  
+                sheet_name="KPI Pyramid",  
+            xlsx2csv_options={"skip_empty_lines": False,"skip_hidden_rows": False},
+            read_csv_options={"has_header": False, "new_columns": ["ANCHOR","BU", "VERSION", "PERIOD", "COST_CENTER", "PEOPLE_TYPE", "LEVEL_SENIORITY", 
+                        "ENDOFMONTH_EFT", "BILLABLE_DAYS", "INTERNAL_PROJECTS", "PRE_SALES_DAYS","TRAINING_DAYS","INACTIVITY_DAY",
+                        "HOLIDAYS","SICK_DAYS","TOTAL_DAYS", "OCCUPANCY_RATE", "SRVC_SALES_BEF_BONIMALI","DAILY_RATE", 
+                        "ANNUAL_DIRECT_COSTS", "ANNUAL_PRODUCTION_DAYS", "DAILY_COST","DAILY_MARGIN","IN","OUT","TRANSFER_PROMO"]},  
                     )
-        
         #drop the columns we do need
-        df_new_lm = df_polars_lm.drop("ANCHOR") 
-        # keep only the first 13 columns
-        df_new_lm = df_new_lm.select(df_new_lm.columns[:17])
+        df_new = df_polars.drop("ANCHOR") 
+        # keep only the first 25 columns
+        df_new = df_new.select(df_new.columns[:25])
         # remove the lines we do not need the info for the KPI pyramid only starts from line 78
-        df_new_lm = df_new_lm.slice(125, len(df_polars_lm)-78)
+        df_new = df_new.slice(15, len(df_polars)-15)
         # remove rows where column "BU" is null
-        df_new_lm = df_new_lm.filter(pl.col("BU").is_not_null())
+        df_new = df_new.filter(pl.col("BU").is_not_null())
+        
+
+        # convert to pandas dataframe because the snowloader is dependant on pandas datatypes
+        # KPI = df_new.to_pandas()
+
 
         # Add additional columns
-        # convert the monthname year to a valid end of month date
-        LIC_MAIN = df_new_lm.to_pandas()
-        #LIC_MAIN['PERIOD'] = pd.to_datetime(LIC_MAIN['PERIOD'], format="%m-%d-%Y") 
+            # convert the monthname year to a valid end of month date
+        KPI = df_new.to_pandas()
+        KPI['PERIOD'] = pd.to_datetime(KPI['PERIOD'], format="%b-%y") + pd.offsets.MonthEnd(1)
         # KPI['PERIOD'] = KPI['PERIOD'].dt.date
         # converted it to string again, in the dbt model there's a convertsion to a date 
-        #LIC_MAIN['PERIOD'] = LIC_MAIN['PERIOD'].dt.strftime('%Y-%m-%d')
+        KPI['PERIOD'] = KPI['PERIOD'].dt.strftime('%Y-%m-%d')
 
-        LIC_MAIN['CREATED_ON'] = datetime.now().astimezone(pytz.timezone('Europe/Paris')).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+        KPI['CREATED_ON'] = datetime.now().astimezone(pytz.timezone('Europe/Paris')).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
         # snowflake is expecting a string value and not a date, dbt is failing on this
-        LIC_MAIN['MBR_MONTH'] = str(MBRmonth)
-        LIC_MAIN['MBR_FileName'] = str(file_name)
+        KPI['MBR_MONTH'] = str(MBRmonth)
+        KPI['MBR_FileName'] = str(file_name)
         # Compose new table name
-        table_name_lm =  "R_LIC_MAINT_"  + str(MBRscope).upper()
-        
-        if(mbr_env== 'P'):
-            snow_df =session_prod.write_pandas(LIC_MAIN,table_name_lm,auto_create_table = True, overwrite=True)
-        else : 
-            snow_df =session_dev.write_pandas(LIC_MAIN,table_name_lm,auto_create_table = True, overwrite=True)
+        table_name = "KPI Pyramid".replace("KPI ", "R_KPI_").replace("Pyramid", "PYRAMID_" + str(MBRscope).upper())
+        try:
+            if(mbr_env== 'P'):
+                snow_df =session_prod.write_pandas(KPI,table_name,auto_create_table = True, overwrite=True)
+            else:
+                snow_df =session_dev.write_pandas(KPI,table_name,auto_create_table = True, overwrite=True)
+        except Exception as e:
+            #Slack
+            #slack_client.chat_postMessage(channel="#kap", text="3/4 - File " + file_name + " - Error in KPI Pyramid sheet '" + sheet_name + "' (Skipped). Error : " + str(e))
+            #Teams
+            msgTeams =  {"text":"2/3 - File <b>" + file_name + "</b> - Error in KPI Pyramid sheet <b>'" + sheet_name + "'</b> (Skipped). Error : " + str(e)} 
+            response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams))
+            
+            pass
 
-    except Exception as e: 
-        #Slack
-        #slack_client.chat_postMessage(channel="#kap", text="3/4 - File " + file_name + " - Error in Lice & Maintenance sheet (Skipped). Error : " + str(e))       
-        #Teams
-        msgTeams =  {"text":"2/3 - File <b>" + file_name + "</b> - Error in Lice & Maintenance sheet (Skipped). Error : " + str(e)} 
-        response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams))
+    ##################################################################################################################################################
+    # Load "License & Maintenance" worksheet   
+    if('License & Maintenance' in xls.sheet_names): 
+        try:
+            #L&M
+            # List of column names we want to keep, I used the index because the structure of the file should not be changed
+            columns_to_be_read = [1, 2, 3,4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,17,18, 19, 20, 21,41]
+            # Rename the columns
+            new_columns_lm = ["BU", "VERSION", "PERIOD", "SOFTWARE_PARENT", 
+                    "REV_LIC_PERPETUAL", "REV_LIC_NEW_SUBSCRIPTION", "REV_LIC_IC_SALES","REV_MAINT_1STYEAR",
+                    "REV_MAINT_IC_SALES","REV_LIC_RENEWED_SUBSCRIPTION","REV_MAINT_RENEWAL","REV_LIC_REFERRALS","TOTAL_REVENUE",
+                    "CP_LICPUR_PERPETUAL", "CP_LICPUR_NEW_SUBSCRIPTION", "CP_LIC_IC_ANY_PUR","CP_MAINTPUR_1STYEAR",
+                    "CP_MAINT_IC_ANY_SSUB","CP_LICPUR_RENEWED_SUBSCRIPTION","CP_MAINT_RENEWAL","TOTAL_COST",
+                    "CHURN_RATE"]
+                
+            skiprows = 12
+            #Get the sheet that contains KPI Pyramid data
+            df_lm = pd.read_excel(xls,licMainSheetName, skiprows=skiprows,usecols=columns_to_be_read, converters={k: str for k in range(22)})
+            #Apply the new columns names
+            df_lm.columns = new_columns_lm
+            #Add additional columns
+            df_lm['MBR_MONTH'] = str(MBRmonth)
+            df_lm['CREATED_ON'] =  datetime.now().astimezone(pytz.timezone('Europe/Paris')).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+            df_lm['MBR_FileName'] = str(file_name)
 
-        pass        
+            #Change the columns order so they are identical o the tables that have been created on SF
+            df_lm = df_lm.head(4000)
+            #Compose a new valid tablename for the KPI Pyramid sheet
+            table_name = "R_LIC_MAINT_" + str(MBRscope).replace(" ","_").upper()
+
+            if(mbr_env== 'P'):
+                snow_df =session_prod.write_pandas(df_lm,table_name,auto_create_table = True, overwrite=True)
+            else : 
+                snow_df =session_dev.write_pandas(df_lm,table_name,auto_create_table = True, overwrite=True)
+
+        except Exception as e: 
+            #Slack
+            #slack_client.chat_postMessage(channel="#kap", text="3/4 - File " + file_name + " - Error in Lice & Maintenance sheet (Skipped). Error : " + str(e))       
+            #Teams
+            msgTeams =  {"text":"2/3 - File <b>" + file_name + "</b> - Error in Lice & Maintenance sheet (Skipped). Error : " + str(e)} 
+            response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams))
+
+            pass        
+
 
     #######################IC DECLARATION#####################################    
-    try:
-        skiprows = 9
-        sheet_name = "IC declaration"
-        
-        # List of column names we want to keep, I used the index because the structure of the file should not be changed
-        columns_to_be_read = [1, 2,3, 4,5,6,7,8,9,10,11,12,13,14,15, 18,19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29,
-                               32,33,34,35,36,37,38,39,40,41,42,43] #38
-        # Rename the columns
-        new_columns = ['BU', 'NATURE','IC_PARTNER', 'Actual_LY_01', 'Actual_LY_02', 'Actual_LY_03', 
-                    'Actual_LY_04', 'Actual_LY_05', 'Actual_LY_06', 'Actual_LY_07', 'Actual_LY_08', 'Actual_LY_09', 
-                    'Actual_LY_10', 'Actual_LY_11', 'Actual_LY_12', 'Budget_CY_01', 'Budget_CY_02', 'Budget_CY_03', 
-                    'Budget_CY_04', 'Budget_CY_05', 'Budget_CY_06', 'Budget_CY_07', 'Budget_CY_08', 'Budget_CY_09', 
-                    'Budget_CY_10', 'Budget_CY_11', 'Budget_CY_12', 'Actual_CY_01', 'Actual_CY_02', 'Actual_CY_03', 
-                    'Actual_CY_04', 'Actual_CY_05', 'Actual_CY_06', 'Actual_CY_07', 'Actual_CY_08', 'Actual_CY_09', 
-                    'Actual_CY_10', 'Actual_CY_11', 'Actual_CY_12']
-        
-        #Get the IC sheet 
-        df_ic = pd.read_excel(fileXlx,sheet_name,skiprows=skiprows,usecols=columns_to_be_read)
-        #Apply the new columns names
-        df_ic.columns = new_columns
-        #Add additional columns
-        df_ic["MBR_SCOPE"] = str(MBRscope)
-        df_ic['MBR_MONTH'] = str(MBRmonth)
-        df_ic['CREATED_ON'] =  datetime.now().astimezone(pytz.timezone('Europe/Paris')).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-        df_ic['MBR_FileName'] = str(file_name)
-        
+    if('IC declaration' in xls.sheet_names): 
+        try:
+            skiprows = 9
+            sheet_name = "IC declaration"
+            
+            # List of column names we want to keep, I used the index because the structure of the file should not be changed
+            columns_to_be_read = [0,1, 2, 4,5,6,7,8,9,
+                                  10,11,12,13,14,15,16,17,18,19,
+                                  22,23,24,25,26,27,28,29,30,31,
+                                  32,33,36,37,38,39,40,41,42,43,
+                                  44,45,46,47,49,50,51] #46
+            # Rename the columns
+            new_columns = ['INDEX','ANAPLAN_INDEX','PBI_INDEX','BU', 'COSTCENTER','ACCOUNT','IC_PARTNER', 
+                        'Actual_LY_01', 'Actual_LY_02', 'Actual_LY_03', 'Actual_LY_04', 'Actual_LY_05', 'Actual_LY_06', 
+                        'Actual_LY_07', 'Actual_LY_08', 'Actual_LY_09', 'Actual_LY_10', 'Actual_LY_11', 'Actual_LY_12', 
+                        'Budget_CY_01', 'Budget_CY_02', 'Budget_CY_03', 'Budget_CY_04', 'Budget_CY_05', 'Budget_CY_06', 
+                        'Budget_CY_07', 'Budget_CY_08', 'Budget_CY_09', 'Budget_CY_10', 'Budget_CY_11', 'Budget_CY_12', 
+                        'Actual_CY_01', 'Actual_CY_02', 'Actual_CY_03', 'Actual_CY_04', 'Actual_CY_05', 'Actual_CY_06', 
+                        'Actual_CY_07', 'Actual_CY_08', 'Actual_CY_09', 'Actual_CY_10', 'Actual_CY_11', 'Actual_CY_12',
+                        'Actual_NY_01','Actual_NY_02','Actual_NY_03']
+            
+            #Get the IC sheet 
+            df_ic = pd.read_excel(fileXlx,sheet_name,skiprows=skiprows,usecols=columns_to_be_read, converters={k: str for k in range(46)})
+            #Apply the new columns names
+            df_ic.columns = new_columns
+            #Add additional columns
+            df_ic["MBR_SCOPE"] = str(MBRscope)
+            df_ic['MBR_MONTH'] = str(MBRmonth)
+            df_ic['CREATED_ON'] =  datetime.now().astimezone(pytz.timezone('Europe/Paris')).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+            df_ic['MBR_FileName'] = str(file_name)
+            
 
-        # Compose new table name
-        table_name_ic =  "R_IC_"  + str(MBRscope).upper()
-        if(mbr_env== 'P'):
-            snow_df =session_prod.write_pandas(df_ic,table_name_ic,auto_create_table = True, overwrite=True)
-        else : 
-            snow_df =session_dev.write_pandas(df_ic,table_name_ic,auto_create_table = True, overwrite=True)
+            # Compose new table name
+            table_name_ic =  "R_IC_"  + str(MBRscope).upper()
+            if(mbr_env== 'P'):
+                snow_df =session_prod.write_pandas(df_ic,table_name_ic,auto_create_table = True, overwrite=True)
+            else : 
+                snow_df =session_dev.write_pandas(df_ic,table_name_ic,auto_create_table = True, overwrite=True)
 
-    except Exception as e:
-        print(e)    
+        except Exception as e:
+            print(e)    
 
     return snow_df, MBRscope,mbr_env
 
