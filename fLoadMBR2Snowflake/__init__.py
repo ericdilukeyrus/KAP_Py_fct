@@ -74,27 +74,7 @@ def main(myblob: func.InputStream):
             msgTeams_2_4 =  {"text":"1/3 - File <b>" + blob_name + "</b> received  at " + datetime.now().astimezone(pytz.timezone('Europe/Paris')).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]}
             response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams_2_4))    
             snowpark_df, mbr_scope, mbr_env = loadInferAndPersist(blob_data,blob_name)
-            num_rows = snowpark_df.count()
-            mbr_env_nm = 'DEV' if mbr_env=='D' else 'PROD'        
-    
-            if num_rows > 2:
-                #Teams
-                msgTeams_3_4 =  {"text":"2/3 - File <b>" + blob_name + "</b> raw data loaded in " + mbr_env_nm + " db (MBR Scope : <b>" + mbr_scope +"</b>)"}
-                response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams_3_4))
-
-                schedule_status, schedule_name = run_paradygme_schedule(mbr_scope,mbr_env)
-
-                # Now you can do something with the status
-                if schedule_status == "SUCCESS":
-                    #Teams
-                    msgTeams_4_4 =  {"text":"3/3 - File <b>" + blob_name + "</b> loaded in DWH. Schedule Success : <b>" +  schedule_name + "</b>"} 
-                    response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams_4_4))
-
-                    blob_client_instance.delete_blob()            
-                else:
-                    #Teams
-                    msgTeams_4_4 =  {"text":"3/3 - File <b>" + blob_name + "</b> not loaded in DWH. Schedule Error : <b>" +  schedule_name + "</b>"} 
-                    response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams_4_4))
+           
         except Exception as e :
             #Teams
             msgTeams =  {"text":"Error File <b>" + blob_name + "</b>, execption : " + str(e)} 
@@ -187,6 +167,7 @@ def loadInferAndPersist(file,file_name):
     
     #License & Maintenance sheet name
     licMainSheetName = str()
+    countPL = 0
 
     for index, row in MBRparams.iterrows():
         BU_code = row['BU_Code']
@@ -229,9 +210,11 @@ def loadInferAndPersist(file,file_name):
                 # write the data to the P&L tables on snowflake
                 try:
                     if(mbr_env== 'P'):
-                        snow_df = session_prod.write_pandas(df_Finance,table_name,auto_create_table = True, overwrite=True)
+                        snow_df = session_prod.write_pandas(df_Finance,table_name,auto_create_table = True, overwrite=True)                        
                     else :
                         snow_df = session_dev.write_pandas(df_Finance,table_name,auto_create_table = True, overwrite=True)
+                    #Increment the number of P&L sheet processed
+                    countPL = countPL+1
                 except Exception as e :
                     #Slack
                     #slack_client.chat_postMessage(channel="#kap", text="3/4 - File " + file_name + " - Error in P&L sheet '" + sheet_name + "' (Skipped). Error : " + str(e))
@@ -241,7 +224,15 @@ def loadInferAndPersist(file,file_name):
 
                     print(e)
                     pass
-            
+
+    #If the count of P&L processed is > 0, run the paradygme schedule
+    if countPL > 0 :
+        #Teams
+        msgTeams_3_4 =  {"text":"2/3 - File <b>" + file_name + "</b> P&L raw data loaded in " + mbr_env + " db (Nbr of sheet :" + countPL + " / MBR Scope : <b>" + MBRscope +"</b>)"}
+        response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams_3_4))       
+        mbr_file_type = "PL"
+        schedule_status, schedule_name = run_paradygme_schedule(MBRscope,mbr_env, mbr_file_type)     
+
     
     ###############################################################################################################################                
     
