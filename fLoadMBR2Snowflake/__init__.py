@@ -73,13 +73,12 @@ def main(myblob: func.InputStream):
             #Teams
             msgTeams_2_4 =  {"text":"1/3 - File <b>" + blob_name + "</b> received  at " + datetime.now().astimezone(pytz.timezone('Europe/Paris')).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]}
             response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams_2_4))    
-            snowpark_df, mbr_scope, mbr_env = loadInferAndPersist(blob_data,blob_name)
+            snowpark_df, mbr_scope, mbr_env = loadInferAndPersist(blob_client_instance,blob_data,blob_name)
            
         except Exception as e :
             #Teams
             msgTeams =  {"text":"Error File <b>" + blob_name + "</b>, execption : " + str(e)} 
-            response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams))
-            
+            response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams))            
             blob_client_instance.delete_blob()  
              
 def excel_to_df(input_file_path):
@@ -117,7 +116,7 @@ def excel_budget_to_df(input_file_path):
 # The function `loadInferAndPersist()` is decorated with `st.cache_data` but it returns an unevaluated dataframe
 # of type `snowflake.snowpark.table.Table`. Please call `collect()` or `to_pandas()` on the dataframe before returning it,
 # so `st.cache_data` can serialize and cache it.
-def loadInferAndPersist(file,file_name):
+def loadInferAndPersist(blob_instance, file,file_name):
     connection_sf = "creds.json"
     # connect to Snowflake Prod
     with open(connection_sf) as f:
@@ -216,22 +215,73 @@ def loadInferAndPersist(file,file_name):
                     #Increment the number of P&L sheet processed
                     countPL = countPL+1
                 except Exception as e :
-                    #Slack
-                    #slack_client.chat_postMessage(channel="#kap", text="3/4 - File " + file_name + " - Error in P&L sheet '" + sheet_name + "' (Skipped). Error : " + str(e))
                     #Teams
                     msgTeams =  {"text":"2/3 - File <b>" + file_name + "</b> - Error in P&L sheet <b>'" + sheet_name + "'</b> (Skipped). Error : " + str(e)} 
                     response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams))
-
-                    print(e)
                     pass
+            #######################IC DECLARATION#####################################    
+            if('IC declaration' == sheet_name): 
+                try:
+                    skiprows = 9
+                    sheet_name = "IC declaration"
+                    
+                    # List of column names we want to keep, I used the index because the structure of the file should not be changed
+                    columns_to_be_read = [0,1, 2, 4,5,6,7,8,9,
+                                        10,11,12,13,14,15,16,17,18,19,
+                                        22,23,24,25,26,27,28,29,30,31,
+                                        32,33,36,37,38,39,40,41,42,43,
+                                        44,45,46,47,49,50,51] #46
+                    # Rename the columns
+                    new_columns = ['INDEX','ANAPLAN_INDEX','PBI_INDEX','BU', 'COSTCENTER','ACCOUNT','IC_PARTNER', 
+                                'Actual_LY_01', 'Actual_LY_02', 'Actual_LY_03', 'Actual_LY_04', 'Actual_LY_05', 'Actual_LY_06', 
+                                'Actual_LY_07', 'Actual_LY_08', 'Actual_LY_09', 'Actual_LY_10', 'Actual_LY_11', 'Actual_LY_12', 
+                                'Budget_CY_01', 'Budget_CY_02', 'Budget_CY_03', 'Budget_CY_04', 'Budget_CY_05', 'Budget_CY_06', 
+                                'Budget_CY_07', 'Budget_CY_08', 'Budget_CY_09', 'Budget_CY_10', 'Budget_CY_11', 'Budget_CY_12', 
+                                'Actual_CY_01', 'Actual_CY_02', 'Actual_CY_03', 'Actual_CY_04', 'Actual_CY_05', 'Actual_CY_06', 
+                                'Actual_CY_07', 'Actual_CY_08', 'Actual_CY_09', 'Actual_CY_10', 'Actual_CY_11', 'Actual_CY_12',
+                                'Actual_NY_01','Actual_NY_02','Actual_NY_03']
+                    
+                    #Get the IC sheet 
+                    df_ic = pd.read_excel(fileXlx,sheet_name,skiprows=skiprows,usecols=columns_to_be_read, converters={k: str for k in range(46)})
+                    #Apply the new columns names
+                    df_ic.columns = new_columns
+                    #Add additional columns
+                    df_ic["MBR_SCOPE"] = str(MBRscope)
+                    df_ic['MBR_MONTH'] = str(MBRmonth)
+                    df_ic['CREATED_ON'] =  datetime.now().astimezone(pytz.timezone('Europe/Paris')).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+                    df_ic['MBR_FileName'] = str(file_name)
+                    
 
-    #If the count of P&L processed is > 0, run the paradygme schedule
+                    # Compose new table name
+                    table_name_ic =  "R_IC_"  + str(MBRscope).upper()
+                    if(mbr_env== 'P'):
+                        snow_df =session_prod.write_pandas(df_ic,table_name_ic,auto_create_table = True, overwrite=True)
+                    else : 
+                        snow_df =session_dev.write_pandas(df_ic,table_name_ic,auto_create_table = True, overwrite=True)
+                    countPL = countPL + 1
+                except Exception as e:
+                    #Teams
+                    msgTeams =  {"text":"2/3 - File <b>" + file_name + "</b> - Error in IC sheet <b>'" + sheet_name + "'</b> (Skipped). Error : " + str(e)} 
+                    response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams))
+                    pass   
+
+    #If the count of P&L processed + IC is > 0, run the paradygme schedule
     if countPL > 0 :
         #Teams
-        msgTeams_3_4 =  {"text":"2/3 - File <b>" + file_name + "</b> P&L raw data loaded in " + mbr_env + " db (Nbr of sheet :" + countPL + " / MBR Scope : <b>" + MBRscope +"</b>)"}
+        msgTeams_3_4 =  {"text":"2/3 - File <b>" + file_name + "</b> P&L & IC raw data loaded in " + mbr_env + " db (Nbr of sheet :" + str(countPL) + " / MBR Scope : <b>" + MBRscope +"</b>)"}
         response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams_3_4))       
-        mbr_file_type = "PL"
-        schedule_status, schedule_name = run_paradygme_schedule(MBRscope,mbr_env, mbr_file_type)     
+        mbr_file_type = "pl"
+        schedule_status, schedule_name = run_paradygme_schedule(MBRscope,mbr_env, mbr_file_type) 
+        
+        if schedule_status=="SUCCESS":
+            #Teams
+            msgTeams_4_4 =  {"text":"3/3 - File <b>" + file_name + "</b> (P&L & IC) loaded in DWH. Schedule Success : <b>" +  schedule_name + "</b>"} 
+            response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams_4_4))
+            blob_instance.delete_blob()            
+        else:
+            #Teams
+            msgTeams_4_4 =  {"text":"3/3 - File <b>" + file_name + "</b> (P&L & IC) not loaded in DWH. Schedule Error : <b>" +  schedule_name + "</b>"} 
+            response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams_4_4) )
 
     
     ###############################################################################################################################                
@@ -332,52 +382,7 @@ def loadInferAndPersist(file,file_name):
             #Teams
             msgTeams =  {"text":"2/3 - File <b>" + file_name + "</b> - Error in Lice & Maintenance sheet (Skipped). Error : " + str(e)} 
             response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams))
-
-            pass        
-
-
-    #######################IC DECLARATION#####################################    
-    if('IC declaration' in xls.sheet_names): 
-        try:
-            skiprows = 9
-            sheet_name = "IC declaration"
-            
-            # List of column names we want to keep, I used the index because the structure of the file should not be changed
-            columns_to_be_read = [0,1, 2, 4,5,6,7,8,9,
-                                  10,11,12,13,14,15,16,17,18,19,
-                                  22,23,24,25,26,27,28,29,30,31,
-                                  32,33,36,37,38,39,40,41,42,43,
-                                  44,45,46,47,49,50,51] #46
-            # Rename the columns
-            new_columns = ['INDEX','ANAPLAN_INDEX','PBI_INDEX','BU', 'COSTCENTER','ACCOUNT','IC_PARTNER', 
-                        'Actual_LY_01', 'Actual_LY_02', 'Actual_LY_03', 'Actual_LY_04', 'Actual_LY_05', 'Actual_LY_06', 
-                        'Actual_LY_07', 'Actual_LY_08', 'Actual_LY_09', 'Actual_LY_10', 'Actual_LY_11', 'Actual_LY_12', 
-                        'Budget_CY_01', 'Budget_CY_02', 'Budget_CY_03', 'Budget_CY_04', 'Budget_CY_05', 'Budget_CY_06', 
-                        'Budget_CY_07', 'Budget_CY_08', 'Budget_CY_09', 'Budget_CY_10', 'Budget_CY_11', 'Budget_CY_12', 
-                        'Actual_CY_01', 'Actual_CY_02', 'Actual_CY_03', 'Actual_CY_04', 'Actual_CY_05', 'Actual_CY_06', 
-                        'Actual_CY_07', 'Actual_CY_08', 'Actual_CY_09', 'Actual_CY_10', 'Actual_CY_11', 'Actual_CY_12',
-                        'Actual_NY_01','Actual_NY_02','Actual_NY_03']
-            
-            #Get the IC sheet 
-            df_ic = pd.read_excel(fileXlx,sheet_name,skiprows=skiprows,usecols=columns_to_be_read, converters={k: str for k in range(46)})
-            #Apply the new columns names
-            df_ic.columns = new_columns
-            #Add additional columns
-            df_ic["MBR_SCOPE"] = str(MBRscope)
-            df_ic['MBR_MONTH'] = str(MBRmonth)
-            df_ic['CREATED_ON'] =  datetime.now().astimezone(pytz.timezone('Europe/Paris')).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-            df_ic['MBR_FileName'] = str(file_name)
-            
-
-            # Compose new table name
-            table_name_ic =  "R_IC_"  + str(MBRscope).upper()
-            if(mbr_env== 'P'):
-                snow_df =session_prod.write_pandas(df_ic,table_name_ic,auto_create_table = True, overwrite=True)
-            else : 
-                snow_df =session_dev.write_pandas(df_ic,table_name_ic,auto_create_table = True, overwrite=True)
-
-        except Exception as e:
-            print(e)    
+            pass            
 
     return snow_df, MBRscope,mbr_env
 
@@ -677,7 +682,7 @@ def loadCorpBudgetInferAndPersist(file, file_name):
 
     return BUD_BU
 
-def run_paradygme_schedule(mbr_scope, mbr_env):
+def run_paradygme_schedule(mbr_scope, mbr_env, mbr_file_type):
 
     def _extract_gql_response(request: requests.Response, query_name: str, field: str) -> str:
         response_json = request.json()
@@ -697,7 +702,7 @@ def run_paradygme_schedule(mbr_scope, mbr_env):
             "X-API-SECRET": "gv7ajlg4ga50vl2e95620g33fieh1ahlkpkdpj2iw75phuwntmi1ca26amji61qph4dqywtl4zwplqfdt26vjybu5qcq05an",
     }
 
-    bolt_schedule_name = "operations_run_" + str(mbr_scope).lower()
+    bolt_schedule_name = "operations_run_" + str(mbr_file_type) + "_" +  str(mbr_scope).lower()
 
     if mbr_env == 'D' :
         bolt_schedule_name = bolt_schedule_name + '_dev'
