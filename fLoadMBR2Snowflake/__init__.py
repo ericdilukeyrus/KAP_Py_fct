@@ -203,7 +203,7 @@ def loadInferAndPersist(blob_instance, file,file_name):
                     'Actual_CY_10', 'Actual_CY_11', 'Actual_CY_12', 'Actual_NY_01', 'Actual_NY_02', 'Actual_NY_03', 
                     'BU_Code', 'BU_Name', 'Currency_Code', 'MBR_Scope', 'MBR_Month', 'CostCenter_Code', 'CREATED_ON','MBR_FileName' ]]
                 #Keep data until line 496
-                df_Finance = df_Finance.head(602)
+                df_Finance = df_Finance.head(616)
                 # compose a new valid tablename for the P&L file
                 table_name = sheet_name.replace("P&L ", "R_PL_").replace("FI", "FI_" + str(MBRscope).upper())
                 # write the data to the P&L tables on snowflake
@@ -284,9 +284,7 @@ def loadInferAndPersist(blob_instance, file,file_name):
             response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams_4_4) )
 
     
-    ###############################################################################################################################                
-    
-    
+    ###############################################################################################################################                   
     # Load the "KPI Pyramid" worksheet
     # used Polars because the pandas.read_excel() was taking a very, very long time 
     if('KPI Pyramid' in xls.sheet_names):
@@ -295,7 +293,7 @@ def loadInferAndPersist(blob_instance, file,file_name):
                 sheet_name="KPI Pyramid",  
             xlsx2csv_options={"skip_empty_lines": False,"skip_hidden_rows": False},
             read_csv_options={"has_header": False, "new_columns": ["ANCHOR","BU", "VERSION", "PERIOD", "COST_CENTER", "PEOPLE_TYPE", "LEVEL_SENIORITY", 
-                        "ENDOFMONTH_EFT", "BILLABLE_DAYS", "INTERNAL_PROJECTS", "PRE_SALES_DAYS","TRAINING_DAYS","INACTIVITY_DAY",
+                        "ENDOFMONTH_FTE", "BILLABLE_DAYS", "INTERNAL_PROJECTS", "PRE_SALES_DAYS","TRAINING_DAYS","INACTIVITY_DAY",
                         "HOLIDAYS","SICK_DAYS","TOTAL_DAYS", "OCCUPANCY_RATE", "SRVC_SALES_BEF_BONIMALI","DAILY_RATE", 
                         "ANNUAL_DIRECT_COSTS", "ANNUAL_PRODUCTION_DAYS", "DAILY_COST","DAILY_MARGIN","IN","OUT","TRANSFER_PROMO"]},  
                     )
@@ -332,9 +330,24 @@ def loadInferAndPersist(blob_instance, file,file_name):
                 snow_df =session_prod.write_pandas(KPI,table_name,auto_create_table = True, overwrite=True)
             else:
                 snow_df =session_dev.write_pandas(KPI,table_name,auto_create_table = True, overwrite=True)
+
+            ####Call the Paradime schedule
+            #Teams
+            msgTeams_3_4 =  {"text":"2/3 - File <b>" + file_name + "</b> KPI Pyramid raw data loaded in " + mbr_env + " db (MBR Scope : <b>" + MBRscope +"</b>)"}
+            response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams_3_4))       
+            mbr_file_type = "kp"
+            schedule_status, schedule_name = run_paradygme_schedule(MBRscope,mbr_env, mbr_file_type) 
+            
+            if schedule_status=="SUCCESS":
+                #Teams
+                msgTeams_4_4 =  {"text":"3/3 - File <b>" + file_name + "</b> (KPI Pyramid) loaded in DWH. Schedule Success : <b>" +  schedule_name + "</b>"} 
+                response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams_4_4))
+                blob_instance.delete_blob()            
+            else:
+                #Teams
+                msgTeams_4_4 =  {"text":"3/3 - File <b>" + file_name + "</b> (KPI Pyramid) not loaded in DWH. Schedule Error : <b>" +  schedule_name + "</b>"} 
+                response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams_4_4) )    
         except Exception as e:
-            #Slack
-            #slack_client.chat_postMessage(channel="#kap", text="3/4 - File " + file_name + " - Error in KPI Pyramid sheet '" + sheet_name + "' (Skipped). Error : " + str(e))
             #Teams
             msgTeams =  {"text":"2/3 - File <b>" + file_name + "</b> - Error in KPI Pyramid sheet <b>'" + sheet_name + "'</b> (Skipped). Error : " + str(e)} 
             response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams))
@@ -352,8 +365,8 @@ def loadInferAndPersist(blob_instance, file,file_name):
             new_columns_lm = ["BU", "VERSION", "PERIOD", "SOFTWARE_PARENT", 
                     "REV_LIC_PERPETUAL", "REV_LIC_NEW_SUBSCRIPTION", "REV_LIC_IC_SALES","REV_MAINT_1STYEAR",
                     "REV_MAINT_IC_SALES","REV_LIC_RENEWED_SUBSCRIPTION","REV_MAINT_RENEWAL","REV_LIC_REFERRALS","TOTAL_REVENUE",
-                    "CP_LICPUR_PERPETUAL", "CP_LICPUR_NEW_SUBSCRIPTION", "CP_LIC_IC_ANY_PUR","CP_MAINTPUR_1STYEAR",
-                    "CP_MAINT_IC_ANY_SSUB","CP_LICPUR_RENEWED_SUBSCRIPTION","CP_MAINT_RENEWAL","TOTAL_COST",
+                    "CP_LICPUR_PERPETUAL", "CP_LICPUR_NEW_SUBSCRIPTION", "CP_LIC_IC_PUR","CP_MAINTPUR_1STYEAR",
+                    "CP_MAINT_IC_SUBCONTRACT","CP_LICPUR_RENEWED_SUBSCRIPTION","CP_MAINT_RENEWAL","TOTAL_COST",
                     "CHURN_RATE"]
                 
             skiprows = 12
@@ -375,6 +388,23 @@ def loadInferAndPersist(blob_instance, file,file_name):
                 snow_df =session_prod.write_pandas(df_lm,table_name,auto_create_table = True, overwrite=True)
             else : 
                 snow_df =session_dev.write_pandas(df_lm,table_name,auto_create_table = True, overwrite=True)
+
+            ####Call the Paradime schedule
+            #Teams
+            msgTeams_3_4 =  {"text":"2/3 - File <b>" + file_name + "</b> Lic&Main raw data loaded in " + mbr_env + " db (MBR Scope : <b>" + MBRscope +"</b>)"}
+            response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams_3_4))       
+            mbr_file_type = "lm"
+            schedule_status, schedule_name = run_paradygme_schedule(MBRscope,mbr_env, mbr_file_type) 
+            
+            if schedule_status=="SUCCESS":
+                #Teams
+                msgTeams_4_4 =  {"text":"3/3 - File <b>" + file_name + "</b> (Lic&Main) loaded in DWH. Schedule Success : <b>" +  schedule_name + "</b>"} 
+                response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams_4_4))
+                blob_instance.delete_blob()            
+            else:
+                #Teams
+                msgTeams_4_4 =  {"text":"3/3 - File <b>" + file_name + "</b> (Lic&Main) not loaded in DWH. Schedule Error : <b>" +  schedule_name + "</b>"} 
+                response = requests.post(urlTeams, headers=headerTeams, data = json.dumps(msgTeams_4_4) )    
 
         except Exception as e: 
             #Slack
